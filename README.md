@@ -79,9 +79,9 @@ Advanced ```[backend|frontend|common]/config/main.php```
             'class' => 'kartik\grid\Module',
         ],
 
-make sure you create a writable directory named _backup on app root directory.
+If a the backups folder does not exist, one will be created for you relative to the application root folder.
 
-Pretty Url's ```/backuprestore```
+Pretty Url's ```/backup-management```
 
-No pretty Url's ```index.php?r=backuprestore```
+No pretty Url's ```index.php?r=backup-management```
 
