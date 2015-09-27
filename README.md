@@ -39,6 +39,11 @@ or add
 
 to the require section of your `composer.json` file.
 
+Removal
+-----
+
+composer remove infiniloop/yii2-backuprestore --update-with-dependencies
+
 
 Usage
 -----
