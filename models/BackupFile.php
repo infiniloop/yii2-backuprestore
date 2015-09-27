@@ -1,6 +1,6 @@
 <?php
 
-namespace oe\modules\backuprestore\models;
+namespace infiniloop\modules\backuprestore\models;
 
 use yii\base\Model;
 
