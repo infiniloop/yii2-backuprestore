@@ -18,9 +18,9 @@ Installation
 ------------
 
 Requirements
-I am usin some Kartik extensions that you will need to install and configure in order to work:
-php composer.phar require kartik-v/yii2-grid "*"
-php composer.phar require kartik-v/yii2-widget-fileinput "*"
+Some Kartik extensions will be installed automatically as they're declare as dependencies in composer.json
+kartik-v/yii2-grid "*"
+kartik-v/yii2-widget-fileinput "*"
 
 
 The preferred way to install this extension is through [composer](http://getcomposer.org/download/).
@@ -61,6 +61,9 @@ Advanced ```[backend|frontend|common]/config/main.php```
             //'layout' => '@admin-views/layouts/main', or what ever layout you use
             ...
             ...
+        ],
+        'gridview' => [
+            'class' => 'kartik\grid\Module',
         ],
 
 make sure you create a writable directory named _backup on app root directory.
