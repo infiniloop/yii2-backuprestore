@@ -9,16 +9,11 @@
     ];
     ?>
 
-    <?php if (Yii::$app->session->hasFlash('success')): ?>
-        <div class="alert alert-success">
-            <?php echo Yii::$app->session->getFlash('success'); ?>
-        </div>
-    <?php endif; ?>
-
-
     <div class="row">
         <div class="col-md-12">
             <?php
+            if (!isset($dataProvider) || is_null($dataProvider))
+                $dataProvider = new \yii\data\ArrayDataProvider(['allModels' => []]);
             echo $this->render('_list', array(
                 'dataProvider' => $dataProvider
             ));
