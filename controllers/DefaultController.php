@@ -1,7 +1,8 @@
 <?php
-namespace oe\modules\backuprestore\controllers;
+namespace infiniloop\modules\backuprestore\controllers;
 
 use Yii;
+use yii\base\Exception;
 use yii\web\Controller;
 use oe\modules\backuprestore\models\UploadForm;
 use yii\data\ArrayDataProvider;
@@ -10,6 +11,7 @@ use yii\web\NotFoundHttpException;
 use yii\web\UploadedFile;
 use yii\helpers\Html;
 use yii\base\ErrorException;
+use ZipArchive;
 
 class DefaultController extends Controller {
 
@@ -18,7 +20,6 @@ class DefaultController extends Controller {
     public $fp;
     public $file_name;
     public $_path = null;
-    public $back_temp_file = 'db_backup_';
 
     //public $layout = '//layout2';
 
@@ -26,7 +27,7 @@ class DefaultController extends Controller {
         if (isset($this->module->path))
             $this->_path = $this->module->path;
         else
-            $this->_path = Yii::$app->basePath . '/_backup/';
+            $this->_path = sprintf('%s/%s/', Yii::$app->basePath, $this->module->backupFolder);
 
         if (!file_exists($this->_path)) {
             mkdir($this->_path);
@@ -35,182 +36,106 @@ class DefaultController extends Controller {
         return $this->_path;
     }
 
-    public function execSqlFile($sqlFile) {
-        $message = "ok";
+    public function DoBackup() {
 
-        if (file_exists($sqlFile)) {
-            $sqlArray = file_get_contents($sqlFile);
+        $response = (object)[ 'success' => false , 'output' => '' ];
 
-            $cmd = Yii::$app->db->createCommand($sqlArray);
+        if (!is_writeable($this->path)) {
+            $response->output = sprintf('Path <b>%s</b> is not writeable!', $this->path);
+            return $response;
+        }
+
+        $invalidDbNames = [];
+        $backupFiles = [];
+        foreach($this->module->databases as $dbConfigKey) {
+
             try {
-                $cmd->execute();
-            } catch (CDbException $e) {
-                $message = $e->getMessage();
+                $db = Yii::$app->get($dbConfigKey);
+                $username = $db->username;
+                $password = $db->password;
+                # sample dsn: 'mysql:host=localhost;dbname=decent_yii'
+                $dbName = explode('dbname=', $db->dsn)[1];
+            } catch (Exception $e) {
+                $invalidDbNames[] = $dbConfigKey;
+                break;
+            }
+
+            try {
+
+                $backupFileName = $dbConfigKey . '__backup_' . $dbName . '_' . date('Y.m.d_H.i.s');
+                $backupFileWithPath = $this->path . $backupFileName;
+
+                $suffix = time();
+                #Execute the command to create backup sql file
+                $backupCommand = $this->module->mysqlBasePath . "mysqldump --user={$username} --password={$password} --quick --add-drop-table --add-locks --extended-insert --lock-tables {$dbName} > {$backupFileWithPath}.sql";
+                exec($backupCommand, $output, $return_var);
+
+                if ($return_var > 0) {
+                    $backupCommand = str_replace(
+                        [ $username, $password ],
+                        [ '[actual_user_removed]', '[actual_password_removed]' ],
+                        $backupCommand
+                    );
+                    throw new Exception(
+                        "mysqldump command failed<br/>"
+                        . "{$backupCommand}"
+                        . ( count($output) > 0 ?
+                            ( "Command output:<br/>" . implode('<br/>', $output) )
+                            : ""
+                        )
+                    );
+                }
+
+                #Now zip that file
+                $zip = new ZipArchive();
+                $filename = "{$backupFileWithPath}.zip";
+                if ($zip->open($filename, ZIPARCHIVE::CREATE) !== true) {
+                    throw new Exception("Cannot open <$filename>n");
+                }
+                $zip->addFile("{$backupFileWithPath}.sql", "{$backupFileName}.sql");
+                $zip->close();
+                #Now delete the .sql file without any warning
+                @unlink("{$backupFileWithPath}.sql");
+
+                $backupFiles[] = "{$backupFileName}.zip";
+            } catch (Exception $e) {
+                $response->output = 'Failed to create the backup!<br/>' . $e->getMessage();
+                return $response;
             }
         }
-        return $message;
-    }
 
-    public function getColumns($tableName) {
-        $sql = 'SHOW CREATE TABLE ' . $tableName;
-        $cmd = Yii::$app->db->createCommand($sql);
-        $table = $cmd->queryOne();
-
-        $create_query = $table['Create Table'] . ';';
-
-        $create_query = preg_replace('/^CREATE TABLE/', 'CREATE TABLE IF NOT EXISTS', $create_query);
-        $create_query = preg_replace('/AUTO_INCREMENT\s*=\s*([0-9])+/', '', $create_query);
-        if ($this->fp) {
-            $this->writeComment('TABLE `' . addslashes($tableName) . '`');
-            $final = 'DROP TABLE IF EXISTS `' . addslashes($tableName) . '`;' . PHP_EOL . $create_query . PHP_EOL . PHP_EOL;
-            fwrite($this->fp, $final);
-        } else {
-            $this->tables[$tableName]['create'] = $create_query;
-            return $create_query;
-        }
-    }
-
-    public function getData($tableName) {
-        $sql = 'SELECT * FROM ' . $tableName;
-        $cmd = Yii::$app->db->createCommand($sql);
-        $dataReader = $cmd->query();
-
-        $data_string = '';
-
-        foreach ($dataReader as $data) {
-            $itemNames = array_keys($data);
-            $itemNames = array_map("addslashes", $itemNames);
-            $items = join('`,`', $itemNames);
-            $itemValues = array_values($data);
-            $itemValues = array_map("addslashes", $itemValues);
-            $valueString = join("','", $itemValues);
-            $valueString = "('" . $valueString . "'),";
-            $values = "\n" . $valueString;
-            if ($values != "") {
-                $data_string .= "INSERT INTO `$tableName` (`$items`) VALUES" . rtrim($values, ",") . ";" . PHP_EOL;
-            }
+        //render error
+        if (count($invalidDbNames) > 0) {
+            $response->output = 'Failed to create backups!'
+                . '<br/>There is no database configured in the components section with the name:'
+                . '<br/><b>' . implode(',', $invalidDbNames) . '</b>'
+                . '<br/>' . 'or the configuration does NOT include both username and password properties';
+            return $response;
         }
 
-        if ($data_string == '')
-            return null;
-
-        if ($this->fp) {
-            $this->writeComment('TABLE DATA ' . $tableName);
-            $final = $data_string . PHP_EOL . PHP_EOL . PHP_EOL;
-            fwrite($this->fp, $final);
-        } else {
-            $this->tables[$tableName]['data'] = $data_string;
-            return $data_string;
-        }
+        $response->output = "Backup files were created:<br/>" . implode('<br/>', $backupFiles);
+        $response->success = true;
+        return $response;
     }
 
-    public function getTables($dbName = null) {
-        $sql = 'SHOW TABLES';
-        $cmd = Yii::$app->db->createCommand($sql);
-        $tables = $cmd->queryColumn();
-        return $tables;
-    }
-
-    public function StartBackup($addcheck = true) {
-        $this->file_name = $this->path . $this->back_temp_file . date('Y.m.d_H.i.s') . '.sql';
-
-        $this->fp = fopen($this->file_name, 'w+');
-
-        if ($this->fp == null)
-            return false;
-        fwrite($this->fp, '-- -------------------------------------------' . PHP_EOL);
-        if ($addcheck) {
-            fwrite($this->fp, 'SET AUTOCOMMIT=0;' . PHP_EOL);
-            fwrite($this->fp, 'START TRANSACTION;' . PHP_EOL);
-            fwrite($this->fp, 'SET SQL_QUOTE_SHOW_CREATE = 1;' . PHP_EOL);
-        }
-        fwrite($this->fp, 'SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0;' . PHP_EOL);
-        fwrite($this->fp, 'SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0;' . PHP_EOL);
-        fwrite($this->fp, '-- -------------------------------------------' . PHP_EOL);
-        $this->writeComment('START BACKUP');
-        return true;
-    }
-
-    public function EndBackup($addcheck = true) {
-        fwrite($this->fp, '-- -------------------------------------------' . PHP_EOL);
-        fwrite($this->fp, 'SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS;' . PHP_EOL);
-        fwrite($this->fp, 'SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS;' . PHP_EOL);
-
-        if ($addcheck) {
-            fwrite($this->fp, 'COMMIT;' . PHP_EOL);
-        }
-        fwrite($this->fp, '-- -------------------------------------------' . PHP_EOL);
-        $this->writeComment('END BACKUP');
-        fclose($this->fp);
-        $this->fp = null;
-    }
-
-    public function writeComment($string) {
-        fwrite($this->fp, '-- -------------------------------------------' . PHP_EOL);
-        fwrite($this->fp, '-- ' . $string . PHP_EOL);
-        fwrite($this->fp, '-- -------------------------------------------' . PHP_EOL);
+    private function _outputError($errorMessage) {
+        $flashError = 'error';
+        $flashMsg = $errorMessage;
+        \Yii::$app->getSession()->setFlash($flashError, $flashMsg);
+        return $this->render('index');
     }
 
     public function actionCreate() {
         $flashError = '';
         $flashMsg = '';
 
-        $tables = $this->getTables();
-
-        if (!$this->StartBackup()) {
-            //render error
-            $flashError = 'error';
-            $flashMsg = 'Some errors creating the file';
-            return $this->render('index');
+        $outcome = $this->DoBackup();
+        if ($outcome->success) {
+            \Yii::$app->getSession()->setFlash('success', $outcome->output);
+            $this->redirect(array('index'));
+        } else {
+            return $this->_outputError($outcome->output);
         }
-
-        foreach ($tables as $tableName) {
-            $this->getColumns($tableName);
-        }
-        foreach ($tables as $tableName) {
-            $this->getData($tableName);
-        }
-        $this->EndBackup();
-
-        $flashError = 'success';
-        $flashMsg = 'The file was created !!!';
-
-        \Yii::$app->getSession()->setFlash($flashError, $flashMsg);
-        
-        $this->redirect(array('index'));
-    }
-
-    public function actionClean($redirect = true) {
-        $ignore = array('tbl_user', 'tbl_user_role', 'tbl_event');
-        $tables = $this->getTables();
-
-        if (!$this->StartBackup()) {
-            //render error
-            Yii::$app->user->setFlash('success', "Error");
-            return $this->render('index');
-        }
-
-        $message = '';
-
-        foreach ($tables as $tableName) {
-            if (in_array($tableName, $ignore))
-                continue;
-            fwrite($this->fp, '-- -------------------------------------------' . PHP_EOL);
-            fwrite($this->fp, 'DROP TABLE IF EXISTS ' . addslashes($tableName) . ';' . PHP_EOL);
-            fwrite($this->fp, '-- -------------------------------------------' . PHP_EOL);
-
-            $message .= $tableName . ',';
-        }
-        $this->EndBackup();
-
-        // logout so there is no problme later .
-        Yii::$app->user->logout();
-
-        $this->execSqlFile($this->file_name);
-        unlink($this->file_name);
-        $message .= ' are deleted.';
-        Yii::$app->session->setFlash('success', $message);
-        return $this->redirect(array('index'));
     }
 
     public function actionDelete($file = null) {
@@ -257,7 +182,7 @@ class DefaultController extends Controller {
         $path = $this->path;
         $dataArray = array();
 
-        $list_files = glob($path . '*.sql');
+        $list_files = glob($path . '*.zip');
         if ($list_files) {
             $list = array_map('basename', $list_files);
             sort($list);
@@ -279,41 +204,87 @@ class DefaultController extends Controller {
         ));
     }
 
-    public function actionSyncdown() {
-        $tables = $this->getTables();
+    public function DoRestore($fileName) {
 
-        if (!$this->StartBackup()) {
-            //render error
-            return $this->render('index');
+        $response = (object)[ 'success' => false , 'output' => '' ];
+
+        if (!is_writeable($this->path)) {
+            $response->output = sprintf('Path <b>%s</b> is not writeable!', $this->path);
+            return $response;
         }
 
-        foreach ($tables as $tableName) {
-            $this->getColumns($tableName);
+        $sqlRestoreFile = $this->path . str_replace('zip', 'sql', $fileName);
+        $f = fopen($sqlRestoreFile, 'w+');
+        if (!$f) {
+            $response->output = sprintf('Unable to write the sql file (%s) for restore process!', $sqlRestoreFile);
+            return $response;
         }
-        foreach ($tables as $tableName) {
-            $this->getData($tableName);
+
+        try {
+            $dbConfigKey = explode('__', $fileName)[0];
+            $db = Yii::$app->get($dbConfigKey);
+            $username = $db->username;
+            $password = $db->password;
+            # sample dsn: 'mysql:host=localhost;dbname=decent_yii'
+            $dbName = explode('dbname=', $db->dsn)[1];
+        } catch (Exception $e) {
+            $response->output = sprintf('There is no configuration for the given database key (%s)!', $dbConfigKey);
+            return $response;
         }
-        $this->EndBackup();
-        return $this->actionDownload(basename($this->file_name));
+
+        $zip = new ZipArchive();
+        if ($zip->open($this->path . $fileName) === TRUE) {
+            #Get the backup content, expecting one backup sql per zip
+            $sql = $zip->getFromIndex(0);
+            #Close the Zip File
+            $zip->close();
+            #Prepare the sql file
+            fwrite($f , $sql);
+            fclose($f);
+            #Now restore from the .sql file
+            $command = $this->module->mysqlBasePath . "mysql --user={$username} --password={$password} --database={$dbName} < {$sqlRestoreFile}";
+            exec($command, $output, $return_var);
+
+            if ($return_var > 0) {
+                $command = str_replace(
+                    [ $username, $password ],
+                    [ '[actual_user_removed]', '[actual_password_removed]' ],
+                    $command
+                );
+                $response->output = "mysqldump command failed<br/>"
+                    . "{$command}"
+                    . ( count($output) > 0 ?
+                        ( "Command output:<br/>" . implode('<br/>', $output) )
+                        : ""
+                    );
+                return $response;
+            }
+
+            #Delete temporary files without any warning
+            @unlink("{$sqlRestoreFile}");
+
+            $response->success = true;
+            $response->output = "Restored backup successfully to database: " . $dbName;
+            return $response;
+        }
+        else {
+            $response->output = sprintf('Failed to load the zip file (%s)!', $this->path . $fileName);
+            return $response;
+        }
     }
 
     public function actionRestore($file = null) {
         $flashError = '';
         $flashMsg = '';
 
-        $file = $_GET[0]['filename'];
+        if (is_null($file))
+            $file = $_GET['filename'];
 
         $this->updateMenuItems();
-        $sqlFile = $this->path . basename($file);
-        if (isset($file)) {
-            $sqlFile = $this->path . basename($file);
-            $flashError = 'success';
-            $flashMsg = 'Looks like working :)';
-        } else {
-            $flashError = 'error';
-            $flashMsg = 'Problems with the file name';
-        }
-        $this->execSqlFile($sqlFile);
+        $response = $this->DoRestore($file);
+
+        $flashError = $response->success ? 'success' : 'error';
+        $flashMsg = $response->output;
 
         \Yii::$app->getSession()->setFlash($flashError, $flashMsg);
         $this->redirect(array('index'));
