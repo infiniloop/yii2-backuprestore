@@ -17,7 +17,7 @@
     },
     "autoload": {
         "psr-4": {
-            "oe\\modules\\backuprestore\\": ""
+            "infiniloop\\modules\\backuprestore\\": ""
         }
     }
 }
