@@ -1,5 +1,5 @@
 {
-    "name": "open-ecommerce/yii2-backuprestore",
+    "name": "infiniloop/yii2-backuprestore",
     "description": "Database Backup and Restore functionality",
     "type": "yii2-extension",
     "keywords": ["yii2","Database", "Backup","Restore"],
