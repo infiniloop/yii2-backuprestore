@@ -56,7 +56,7 @@ Basic ```config/web.php```
 Advanced ```[backend|frontend|common]/config/main.php```
 
 >
-        'backuprestore' => [
+        'backup-management' => [
             'class' => '\infiniloop\modules\backuprestore\Module',
             'databases' => ['db', 'db_cms'],  // defaults to all, if not set
             'backupFolder' => '_backup',      // defaults to '_backup'
