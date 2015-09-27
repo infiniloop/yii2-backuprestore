@@ -14,7 +14,7 @@ class Module extends \yii\base\Module
     public $backupFolder = '_backup';
 
     // path where the mysql binaries are located, if empty it expects they're available globally
-    public $mySqlBasePath = '';
+    public $mysqlBasePath = '';
 
     public function init()
     {
