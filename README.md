@@ -2,9 +2,9 @@ Yii2 Backup and Restore Database
 ===================
 Database Backup and Restore functionality
 
-This extension is base in:
+A fork of open-ecommerce/yii2-backuprestore which in turn is based on:
 https://github.com/spanjeta/yii2-backup and other yii1 similar backup-restore extensions 
-I converted to yii2 and made it more intuitive using the Kartik extensions.
+Converted to yii2 and made more intuitive using the Kartik extensions.
 
 
 Demo
@@ -28,13 +28,13 @@ The preferred way to install this extension is through [composer](http://getcomp
 Either run
 
 ```
-php composer.phar require --prefer-dist open-ecommerce/yii2-backuprestore "dev-master"
+php composer.phar require --prefer-dist infiniloop/yii2-backuprestore "dev-master"
 ```
 
 or add
 
 ```
-"open-ecommerce/yii2-backuprestore": "dev-master"
+"infiniloop/yii2-backuprestore": "dev-master"
 ```
 
 to the require section of your `composer.json` file.
