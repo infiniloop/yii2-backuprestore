@@ -61,6 +61,16 @@ Advanced ```[backend|frontend|common]/config/main.php```
             'databases' => ['db', 'db_cms'],  // defaults to all, if not set
             'backupFolder' => '_backup',      // defaults to '_backup'
             'mysqlBasePath' => 'C:/_wamp_/bin/mysql/mysql5.6.17/bin/',            // defaults to an empty string, assumes it's accessible everywhere
+            // add behaviours (ie: restrict access)
+            'as access' => [
+                'class' => AccessControl::className(),
+                'rules' => [
+                    [
+                        'allow' => true,
+                        'roles' => ['manager', 'admin'],
+                    ],
+                ],
+            ],
             //'layout' => '@admin-views/layouts/main', or what ever layout you use
             ...
             ...
