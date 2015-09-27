@@ -217,7 +217,8 @@ class DefaultController extends Controller {
         $flashError = '';
         $flashMsg = '';
 
-        $file = $_GET[0]['filename'];
+        if (is_null($file))
+            $file = $_GET['filename'];
 
         $this->updateMenuItems();
         if (isset($file)) {
