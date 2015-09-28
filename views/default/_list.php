@@ -4,7 +4,6 @@ use yii\helpers\Html;
 use kartik\grid\GridView;
 use yii\helpers\Url;
 
-
 echo GridView::widget([
     'id' => 'install-grid',
     'export' => false,
@@ -45,7 +44,8 @@ echo GridView::widget([
                     ],
                     'urlCreator' => function ($action, $model, $key, $index) {
                 if ($action === 'restore_action') {
-                    $url = Yii::$app->urlManager->createUrl(array('backuprestore/default/restore', 'filename' => $model['name']));
+                    $moduleId = $this->context->module->id;
+                    $url = Yii::$app->urlManager->createUrl(array("{$moduleId}/default/restore", 'filename' => $model['name']));
                     return $url;
                 }
             }
@@ -63,7 +63,8 @@ echo GridView::widget([
                     ],
                     'urlCreator' => function ($action, $model, $key, $index) {
                 if ($action === 'delete_action') {
-                    $url = Yii::$app->urlManager->createUrl(array('backuprestore/default/delete', 'filename' => $model['name']));
+                    $moduleId = $this->context->module->id;
+                    $url = Yii::$app->urlManager->createUrl(array("{$moduleId}/default/delete", 'filename' => $model['name']));
                     return $url;
                 }
             }
