@@ -30,8 +30,9 @@ class DefaultController extends Controller {
             $this->_path = sprintf('%s/%s/', Yii::$app->basePath, $this->module->backupFolder);
 
         if (!file_exists($this->_path)) {
-            mkdir($this->_path);
-            chmod($this->_path, '777');
+            $dirMode = 0777;
+            mkdir($this->_path, $dirMode, true);
+            chmod($this->_path, $dirMode);
         }
         return $this->_path;
     }
