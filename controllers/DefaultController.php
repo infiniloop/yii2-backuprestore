@@ -39,11 +39,11 @@ class DefaultController extends Controller {
 
     /**
      * Perform backup in the configured folder. Save a backup for each database configured with a name in this format:
-     *      {dbKey}__backup_{db_name}_{timestamp}.zip
+     *      {timestamp}__{dbKey}__{db_name}{#if customName then '_customName'}.zip
      * @param null $dbKey   database configuration key, otherwise uses the module's configured databases value
      * @return object
      */
-    public function DoBackup($dbKey = null) {
+    public function DoBackup($dbKey = null, $customName = null) {
 
         $response = (object)[ 'success' => false , 'message' => '', 'backupFiles' => [] ];
 
@@ -71,12 +71,17 @@ class DefaultController extends Controller {
 
             try {
 
-                $backupFileName = $dbConfigKey . '__backup_' . $dbName . '_' . date('Y.m.d_H.i.s');
+                $backupFileName = sprintf('%s__%s__%s%s',
+                    date('Y.m.d_H.i.s'), $dbConfigKey, $dbName,
+                    is_null($customName) ? '' : "_{$customName}");
                 $backupFileWithPath = $this->path . $backupFileName;
 
                 $suffix = time();
                 #Execute the command to create backup sql file
-                $backupCommand = $this->module->mysqlBasePath . "mysqldump --user={$username} --password={$password} --quick --add-drop-table --add-locks --extended-insert --lock-tables {$dbName} > {$backupFileWithPath}.sql";
+                $backupCommand = $this->module->mysqlBasePath
+                    . "mysqldump --user={$username} --password={$password}"
+                    . " --quick --add-drop-table --add-locks --extended-insert --lock-tables"
+                    . " {$dbName} > {$backupFileWithPath}.sql";
                 exec($backupCommand, $output, $return_var);
 
                 if ($return_var > 0) {
@@ -237,7 +242,17 @@ class DefaultController extends Controller {
         }
 
         try {
-            $dbConfigKey = is_null($dbKey) ? explode('__', $fileName)[0] : $dbKey;
+            $dbConfigKey = $dbKey;
+            # try to guess the key from the auto-generated filename
+            if (is_null($dbKey)) {
+                $pattern = '(?<timestamp_date>[0-9.]+)_(?<timestamp_time>[0-9.]+)__(?<dbkey>[a-zA-Z0-9_]+)__(?<dbname_customname>\w+)\.(?<extension>\w+)';
+                preg_match("/^{$pattern}$/", $fileName, $matches);
+                if (!array_key_exists('dbkey', $matches)) {
+                    $response->message = sprintf('Unable to parse a dbkey from the backup filename (%s)!', $fileName);
+                    return $response;
+                }
+                $dbConfigKey = $matches['dbkey'];
+            }
             $db = Yii::$app->get($dbConfigKey);
             $username = $db->username;
             $password = $db->password;
@@ -258,7 +273,8 @@ class DefaultController extends Controller {
             fwrite($f , $sql);
             fclose($f);
             #Now restore from the .sql file
-            $command = $this->module->mysqlBasePath . "mysql --user={$username} --password={$password} --database={$dbName} < {$sqlRestoreFile}";
+            $command = $this->module->mysqlBasePath
+                . "mysql --user={$username} --password={$password} --database={$dbName} < {$sqlRestoreFile}";
             exec($command, $output, $return_var);
 
             if ($return_var > 0) {
@@ -296,7 +312,6 @@ class DefaultController extends Controller {
         if (is_null($file))
             $file = $_GET['filename'];
 
-//        $this->updateMenuItems();
         $response = $this->DoRestore($file);
 
         $flashError = $response->success ? 'success' : 'error';
@@ -320,34 +335,4 @@ class DefaultController extends Controller {
 
         return $this->render('upload', array('model' => $model));
     }
-
-//    protected function updateMenuItems($model = null) {
-//        // create static model if model is null
-//        if ($model == null)
-//            $model = new UploadForm();
-//
-//        switch ($this->action->id) {
-//            case 'restore': {
-//                    $this->menu[] = array('label' => Yii::t('app', 'View Site'), 'url' => Yii::$app->HomeUrl);
-//                }
-//            case 'create': {
-//                    $this->menu[] = array('label' => Yii::t('app', 'List Backup'), 'url' => array('index'));
-//                }
-//                break;
-//            case 'upload': {
-//                    $this->menu[] = array('label' => Yii::t('app', 'Create Backup'), 'url' => array('create'));
-//                }
-//                break;
-//            default: {
-//                    $this->menu[] = array('label' => Yii::t('app', 'List Backup'), 'url' => array('index'));
-//                    $this->menu[] = array('label' => Yii::t('app', 'Create Backup'), 'url' => array('create'));
-//                    $this->menu[] = array('label' => Yii::t('app', 'Upload Backup'), 'url' => array('upload'));
-//                    $this->menu[] = array('label' => Yii::t('app', 'Restore Backup'), 'url' => array('restore'));
-//                    $this->menu[] = array('label' => Yii::t('app', 'Clean Database'), 'url' => array('clean'));
-//                    $this->menu[] = array('label' => Yii::t('app', 'View Site'), 'url' => Yii::$app->HomeUrl);
-//                }
-//                break;
-//        }
-//    }
-
 }
